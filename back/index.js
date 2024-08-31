@@ -8,16 +8,18 @@ const { google } = require('googleapis');
 //server
 const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const app = express();
 app.use(cors());
+app.use(bodyParser.json());
 const multer = require('multer'); // for save temp local file before upload
 const upload = multer({ dest: 'uploads/' });
 
 
 // If modifying these scopes, delete token.json.
 const SCOPES = [
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
-  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.metadata.readonly', // required
+  'https://www.googleapis.com/auth/drive', // required
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.appdata',
   'https://www.googleapis.com/auth/drive.scripts',
@@ -135,6 +137,65 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     await fs.unlink(file.path);
 
     res.status(200).json({ fileId: response.data.id });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+// Function to download file from Google Drive
+async function downloadFile(realFileId) {
+  const auth = await authorize()
+
+  const service = google.drive({ version: 'v3', auth });
+
+  try {
+    const file = await service.files.get({
+      fileId: realFileId,
+      alt: 'media',
+      acknowledgeAbuse: true,
+    }, { responseType: 'stream' });
+
+    // Create a writable stream to save the file
+    const filePath = path.join(__dirname, 'downloads', realFileId);
+    const writer = fs2.createWriteStream(filePath);
+
+    file.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+      writer.on('finish', () => {
+        console.log('Download complete');
+        resolve(filePath);
+      });
+      writer.on('error', (err) => {
+        console.error('Error writing file', err);
+        reject(err);
+      });
+    });
+  } catch (err) {
+    console.error('Error downloading file', err);
+    throw err;
+  }
+}
+
+// Route to handle file download request
+app.post('/download', async (req, res) => {
+  console.log(req.body)
+  const fileId = req.body.fileId;
+  if (!fileId) {
+    return res.status(400).send('File ID is required');
+  }
+
+  try {
+    const filePath = await downloadFile(fileId);
+    res.download(filePath, (err) => {
+      if (err) {
+        res.status(500).send(err.message);
+      }
+      // Optionally, delete the file after sending it
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error deleting file', unlinkErr);
+      });
+    });
   } catch (err) {
     res.status(500).send(err.message);
   }

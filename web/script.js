@@ -24,7 +24,7 @@ document.getElementById('uploadForm').addEventListener('submit', async (event) =
         });
 
         const result = await response.json();
-        document.getElementById('uploadResponse').innerText = `File uploaded successfully. ID: ${result.id}`;
+        document.getElementById('uploadResponse').innerText = `File uploaded successfully. ID: ${result.fileId}`;
     } catch (error) {
         document.getElementById('uploadResponse').innerText = `Error: ${error.message}`;
     }
@@ -36,12 +36,12 @@ document.getElementById('downloadForm').addEventListener('submit', async (event)
     const fileId = form.fileId.value;
 
     try {
-        const response = await fetch('/download', {
+        const response = await fetch('http://localhost:3021/download', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ gdriveId: fileId })
+            body: JSON.stringify({ fileId: fileId })
         });
 
         if (response.ok) {
