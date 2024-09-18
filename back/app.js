@@ -14,16 +14,17 @@ app.use(cors());
 app.use(bodyParser.json());
 const multer = require('multer'); // for save temp local file before upload
 const upload = multer({ dest: 'uploads/' });
+const busboy = require('busboy');
 
 
 // If modifying these scopes, delete token.json.
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.metadata.readonly', // required
   'https://www.googleapis.com/auth/drive', // required
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.appdata',
-  'https://www.googleapis.com/auth/drive.scripts',
-  'https://www.googleapis.com/auth/drive.metadata',
+  // 'https://www.googleapis.com/auth/drive.file',
+  // 'https://www.googleapis.com/auth/drive.appdata',
+  // 'https://www.googleapis.com/auth/drive.scripts',
+  // 'https://www.googleapis.com/auth/drive.metadata',
 ];
 // The file token.json stores the user's access and refresh tokens, and is
 // created automatically when the authorization flow completes for the first
@@ -106,7 +107,17 @@ async function listFiles(authClient) {
   });
 }
 
-// authorize().then(listFiles).catch(console.error);
+authorize().then(listFiles).catch(console.error);
+
+const random = (() => {
+  const buf = Buffer.alloc(16);
+  return () => randomFillSync(buf).toString('hex');
+})();
+
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs2.existsSync(uploadDir)) {
+  fs2.mkdirSync(uploadDir);
+}
 
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
@@ -179,7 +190,7 @@ async function downloadFile(realFileId) {
 
 // Route to handle file download request
 app.post('/download', async (req, res) => {
-  console.log(req.body)
+  // console.log(req.body)
   const fileId = req.body.fileId;
   if (!fileId) {
     return res.status(400).send('File ID is required');
@@ -200,6 +211,10 @@ app.post('/download', async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
+app.post('/get-updates', async (req, res) => {
+  res.status(200).send({ status: 'DISC service connected.' });
+})
 
 const PORT = process.env.PORT || 3021;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
