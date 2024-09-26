@@ -27,9 +27,9 @@ const SCOPE = [
 
 async function authorize() {
   const jwtClient = new google.auth.JWT(
-    process.env.GOOGLE_API_CLIENT_EMAIL,
+    process.env.GOOGLE_API_CLIENT_EMAIL.split(String.raw`\n`).join('\n'),
     null,
-    process.env.GOOGLE_API_PRIVATE_KEY,
+    process.env.GOOGLE_API_PRIVATE_KEY.split(String.raw`\n`).join('\n'),
     SCOPE
   )
 

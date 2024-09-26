@@ -1,6 +1,6 @@
 async function check() {
     try {
-        const res = await fetch('http://localhost:3021/get-updates', {
+        const res = await fetch('https://disc-38hr.onrender.com/get-updates', {
             method: 'POST',
             body: null
         });
@@ -18,7 +18,7 @@ document.getElementById('uploadForm').addEventListener('submit', async (event) =
     const formData = new FormData(form);
 
     try {
-        const response = await fetch('http://localhost:3021/upload', {
+        const response = await fetch('https://disc-38hr.onrender.com/upload', {
             method: 'POST',
             body: formData
         });
