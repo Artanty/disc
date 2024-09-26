@@ -1,9 +1,9 @@
 const fs = require('fs').promises;
-const fs2 = require('fs')
+const fs_sync = require('fs')
 const path = require('path');
 const process = require('process');
-const { authenticate } = require('@google-cloud/local-auth');
 const { google } = require('googleapis');
+require('dotenv').config();
 
 //server
 const express = require('express');
@@ -14,11 +14,8 @@ app.use(cors());
 app.use(bodyParser.json());
 const multer = require('multer'); // for save temp local file before upload
 const upload = multer({ dest: 'uploads/' });
-const busboy = require('busboy');
 
-
-// If modifying these scopes, delete token.json.
-const SCOPES = [
+const SCOPE = [
   'https://www.googleapis.com/auth/drive.metadata.readonly', // required
   'https://www.googleapis.com/auth/drive', // required
   // 'https://www.googleapis.com/auth/drive.file',
@@ -26,63 +23,20 @@ const SCOPES = [
   // 'https://www.googleapis.com/auth/drive.scripts',
   // 'https://www.googleapis.com/auth/drive.metadata',
 ];
-// The file token.json stores the user's access and refresh tokens, and is
-// created automatically when the authorization flow completes for the first
-// time.
-const TOKEN_PATH = path.join(process.cwd(), 'token.json');
-const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
 
-/**
- * Reads previously authorized credentials from the save file.
- *
- * @return {Promise<OAuth2Client|null>}
- */
-async function loadSavedCredentialsIfExist() {
-  try {
-    const content = await fs.readFile(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
-  } catch (err) {
-    return null;
-  }
-}
 
-/**
- * Serializes credentials to a file compatible with GoogleAuth.fromJSON.
- *
- * @param {OAuth2Client} client
- * @return {Promise<void>}
- */
-async function saveCredentials(client) {
-  const content = await fs.readFile(CREDENTIALS_PATH);
-  const keys = JSON.parse(content);
-  const key = keys.installed || keys.web;
-  const payload = JSON.stringify({
-    type: 'authorized_user',
-    client_id: key.client_id,
-    client_secret: key.client_secret,
-    refresh_token: client.credentials.refresh_token,
-  });
-  await fs.writeFile(TOKEN_PATH, payload);
-}
-
-/**
- * Load or request or authorization to call APIs.
- *
- */
 async function authorize() {
-  let client = await loadSavedCredentialsIfExist();
-  if (client) {
-    return client;
-  }
-  client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
-  });
-  if (client.credentials) {
-    await saveCredentials(client);
-  }
-  return client;
+  const jwtClient = new google.auth.JWT(
+    process.env.GOOGLE_API_CLIENT_EMAIL,
+    null,
+    process.env.GOOGLE_API_PRIVATE_KEY,
+    SCOPE
+  )
+
+  await jwtClient.authorize()
+  // console.log(jwtClient)
+
+  return jwtClient
 }
 
 /**
@@ -107,16 +61,9 @@ async function listFiles(authClient) {
   });
 }
 
-authorize().then(listFiles).catch(console.error);
-
-const random = (() => {
-  const buf = Buffer.alloc(16);
-  return () => randomFillSync(buf).toString('hex');
-})();
-
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs2.existsSync(uploadDir)) {
-  fs2.mkdirSync(uploadDir);
+if (!fs_sync.existsSync(uploadDir)) {
+  fs_sync.mkdirSync(uploadDir);
 }
 
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -132,11 +79,12 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const requestBody = {
       name: file.originalname,
       fields: 'id',
+      parents: ["1_I-eTR4nR3Vsf-Kv5QWFKSY_nJbFm0X6"]
     };
 
     const media = {
       mimeType: file.mimetype,
-      body: fs2.createReadStream(file.path),
+      body: fs_sync.createReadStream(file.path),
     };
 
     const response = await service.files.create({
@@ -148,6 +96,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     await fs.unlink(file.path);
 
     res.status(200).json({ fileId: response.data.id });
+    console.log('Upload complete');
   } catch (err) {
     res.status(500).send(err.message);
   }
@@ -168,7 +117,7 @@ async function downloadFile(realFileId) {
 
     // Create a writable stream to save the file
     const filePath = path.join(__dirname, 'downloads', realFileId);
-    const writer = fs2.createWriteStream(filePath);
+    const writer = fs_sync.createWriteStream(filePath);
 
     file.data.pipe(writer);
 
@@ -212,9 +161,74 @@ app.post('/download', async (req, res) => {
   }
 });
 
+// Route to handle file delete request
+app.post('/delete', async (req, res) => {
+  try {
+    const fileId = req.body.fileId;
+    if (!fileId) {
+      return res.status(400).send('File ID is required');
+    }
+    const auth = await authorize()
+
+    const service = google.drive({ version: 'v3', auth });
+
+    const response = await service.files.delete({
+      fileId: fileId
+    });
+
+    res.status(200).json({ fileId: response.data.id });
+    console.log('Delete complete');
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 app.post('/get-updates', async (req, res) => {
   res.status(200).send({ status: 'DISC service connected.' });
 })
+
+
+// Function to delete all files and folders in a directory
+function deleteFolderRecursive(directoryPath) {
+  if (fs_sync.existsSync(directoryPath)) {
+    fs_sync.readdirSync(directoryPath).forEach((file, index) => {
+      const curPath = path.join(directoryPath, file);
+      if (fs_sync.lstatSync(curPath).isDirectory()) { // Recursive call for directories
+        deleteFolderRecursive(curPath);
+      } else { // Delete file
+        fs_sync.unlinkSync(curPath);
+      }
+    });
+    // fs_sync.rmdirSync(directoryPath); // Remove the now empty directory
+  }
+}
+
+// Function to erase the contents of the downloads and uploads folders
+function eraseFolders() {
+  const downloadsPath = path.join(__dirname, 'downloads');
+  const uploadsPath = path.join(__dirname, 'uploads');
+
+  // Delete contents of downloads folder
+  if (fs_sync.existsSync(downloadsPath)) {
+    deleteFolderRecursive(downloadsPath);
+    console.log('Downloads folder erased.');
+  } else {
+    console.log('Downloads folder does not exist.');
+  }
+
+  // Delete contents of uploads folder
+  if (fs_sync.existsSync(uploadsPath)) {
+    deleteFolderRecursive(uploadsPath);
+    console.log('Uploads folder erased.');
+  } else {
+    console.log('Uploads folder does not exist.');
+  }
+}
+
+// Call the eraseFolders function to erase the contents of the downloads and uploads folders
+eraseFolders();
+
+authorize().then(listFiles).catch(console.error);
 
 const PORT = process.env.PORT || 3021;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

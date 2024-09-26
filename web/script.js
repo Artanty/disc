@@ -1,10 +1,10 @@
 async function check() {
     try {
-        const res = await fetch('http://localhost:3021/check', {
+        const res = await fetch('http://localhost:3021/get-updates', {
             method: 'POST',
             body: null
         });
-        console.log("Check function executed!")
+        console.log(res)
     } catch (error) {
         console.error("Error in check function:", error)
     }
@@ -60,5 +60,26 @@ document.getElementById('downloadForm').addEventListener('submit', async (event)
         }
     } catch (error) {
         document.getElementById('downloadResponse').innerText = `Error: ${error.message}`;
+    }
+});
+
+document.getElementById('deleteForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const fileId = form.fileId.value;
+
+    try {
+        const response = await fetch('http://localhost:3021/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ fileId: fileId })
+        });
+
+        await response.json();
+        document.getElementById('deleteResponse').innerText = `Success!`;
+    } catch (error) {
+        document.getElementById('deleteResponse').innerText = error;
     }
 });
